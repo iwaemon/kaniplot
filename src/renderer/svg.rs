@@ -3,17 +3,17 @@ use crate::math;
 use std::fmt::Write;
 
 /// Layout constants (in SVG pixels, matching points conceptually)
-const MARGIN_LEFT: f64 = 80.0;
-const MARGIN_RIGHT: f64 = 20.0;
-const MARGIN_TOP: f64 = 50.0;
-const MARGIN_BOTTOM: f64 = 60.0;
+const MARGIN_LEFT: f64 = 110.0;
+const MARGIN_RIGHT: f64 = 30.0;
+const MARGIN_TOP: f64 = 65.0;
+const MARGIN_BOTTOM: f64 = 80.0;
 const TICK_LEN: f64 = 6.0;
-const FONT_SIZE: f64 = 14.0;
-const TITLE_FONT_SIZE: f64 = 18.0;
-const LEGEND_FONT_SIZE: f64 = 12.0;
+const FONT_SIZE: f64 = 21.0;
+const TITLE_FONT_SIZE: f64 = 27.0;
+const LEGEND_FONT_SIZE: f64 = 18.0;
 const LEGEND_LINE_LEN: f64 = 25.0;
-const LEGEND_PADDING: f64 = 8.0;
-const LEGEND_ROW_HEIGHT: f64 = 18.0;
+const LEGEND_PADDING: f64 = 10.0;
+const LEGEND_ROW_HEIGHT: f64 = 24.0;
 
 /// Returns true if the text contains any `$` delimiters (math regions).
 fn model_has_math(model: &PlotModel) -> bool {
@@ -166,9 +166,11 @@ pub fn render_svg(model: &PlotModel) -> String {
         plot_y + plot_h - (y - model.y_axis.range.0) / (model.y_axis.range.1 - model.y_axis.range.0) * plot_h
     };
 
-    // Border (axes)
+    // Border (axes): bit 0=bottom, 1=left, 2=top, 3=right
     let has_bottom = model.border & 1 != 0;
     let has_left = model.border & 2 != 0;
+    let has_top = model.border & 4 != 0;
+    let has_right = model.border & 8 != 0;
 
     if has_bottom {
         writeln!(svg,
@@ -182,8 +184,20 @@ pub fn render_svg(model: &PlotModel) -> String {
             plot_y + plot_h
         ).unwrap();
     }
+    if has_top {
+        writeln!(svg,
+            r#"<line x1="{plot_x}" y1="{plot_y}" x2="{}" y2="{plot_y}" stroke="black" stroke-width="1"/>"#,
+            plot_x + plot_w
+        ).unwrap();
+    }
+    if has_right {
+        writeln!(svg,
+            r#"<line x1="{}" y1="{plot_y}" x2="{}" y2="{}" stroke="black" stroke-width="1"/>"#,
+            plot_x + plot_w, plot_x + plot_w, plot_y + plot_h
+        ).unwrap();
+    }
 
-    // X ticks
+    // X ticks (bottom)
     for &tick in &model.x_axis.ticks {
         let sx = x_to_svg(tick);
         let sy = plot_y + plot_h;
@@ -200,7 +214,18 @@ pub fn render_svg(model: &PlotModel) -> String {
         ).unwrap();
     }
 
-    // Y ticks
+    // X ticks (top, no labels)
+    if has_top {
+        for &tick in &model.x_axis.ticks {
+            let sx = x_to_svg(tick);
+            writeln!(svg,
+                r#"<line x1="{sx}" y1="{plot_y}" x2="{sx}" y2="{}" stroke="black" stroke-width="0.5"/>"#,
+                plot_y + TICK_LEN
+            ).unwrap();
+        }
+    }
+
+    // Y ticks (left)
     for &tick in &model.y_axis.ticks {
         let sx = plot_x;
         let sy = y_to_svg(tick);
@@ -216,6 +241,18 @@ pub fn render_svg(model: &PlotModel) -> String {
             sy,
             format_tick(tick)
         ).unwrap();
+    }
+
+    // Y ticks (right, no labels)
+    if has_right {
+        for &tick in &model.y_axis.ticks {
+            let sx = plot_x + plot_w;
+            let sy = y_to_svg(tick);
+            writeln!(svg,
+                r#"<line x1="{sx}" y1="{sy}" x2="{}" y2="{sy}" stroke="black" stroke-width="0.5"/>"#,
+                sx - TICK_LEN
+            ).unwrap();
+        }
     }
 
     // X axis label
@@ -441,12 +478,12 @@ mod tests {
                     kind: SeriesStyleKind::Lines,
                     color: (0, 114, 178),
                     line_width: 1.5,
-                    point_size: 3.0,
+                    point_size: 4.5,
                 },
                 label: Some("x^2".into()),
             }],
             key: KeyConfig { visible: true, position: KeyPos::TopRight },
-            border: 3,
+            border: 15,
         }
     }
 

@@ -100,7 +100,9 @@ impl LayoutCtx {
                 } else {
                     SYMBOL_WIDTH
                 };
-                self.push(c.to_string(), width, false, true);
+                // Lowercase Greek letters are italic in LaTeX math mode
+                let italic = c.is_lowercase() || matches!(*c, 'ϑ' | 'ϕ' | 'ϖ' | 'ϱ' | 'ς');
+                self.push(c.to_string(), width, italic, true);
             }
             MathNode::Number(s) => {
                 let width = DIGIT_WIDTH * s.len() as f64;
@@ -383,7 +385,7 @@ mod tests {
         let g = &r.glyphs[0];
         assert_eq!(g.text, "α");
         assert!(g.is_math_font);
-        assert!(!g.italic);
+        assert!(g.italic); // lowercase Greek is italic in math mode
     }
 
     #[test]

@@ -96,7 +96,7 @@ pub fn build_plot_model(plot: &PlotCommand, session: &SessionState) -> Result<Pl
                         kind: convert_style_kind(style.kind),
                         color,
                         line_width: style.line_width.unwrap_or(1.5),
-                        point_size: style.point_size.unwrap_or(3.0),
+                        point_size: style.point_size.unwrap_or(4.5),
                     },
                     label: style.title.clone(),
                 });
@@ -122,7 +122,7 @@ pub fn build_plot_model(plot: &PlotCommand, session: &SessionState) -> Result<Pl
                         kind: convert_style_kind(style.kind),
                         color,
                         line_width: style.line_width.unwrap_or(1.5),
-                        point_size: style.point_size.unwrap_or(3.0),
+                        point_size: style.point_size.unwrap_or(4.5),
                     },
                     label: style.title.clone(),
                 });

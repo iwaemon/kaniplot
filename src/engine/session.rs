@@ -37,7 +37,7 @@ impl SessionState {
             key: KeyOptions::default(),
             xtics: TicsSpec::Auto,
             ytics: TicsSpec::Auto,
-            border: 3,
+            border: 15,
             font: "CMU Serif".into(),
             samples: 1000,
             last_plot: None,
@@ -92,7 +92,7 @@ mod tests {
         assert_eq!(s.xrange.min, Bound::Auto);
         assert_eq!(s.xrange.max, Bound::Auto);
         assert_eq!(s.samples, 1000);
-        assert_eq!(s.border, 3);
+        assert_eq!(s.border, 15);
         assert!(s.title.is_none());
     }
 

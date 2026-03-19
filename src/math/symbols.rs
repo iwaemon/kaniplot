@@ -51,6 +51,13 @@ pub fn lookup_symbol(name: &str) -> Option<char> {
         "chi" => Some('χ'),
         "psi" => Some('ψ'),
         "omega" => Some('ω'),
+        // Greek lowercase variants
+        "varepsilon" => Some('ε'),
+        "vartheta" => Some('ϑ'),
+        "varpi" => Some('ϖ'),
+        "varrho" => Some('ϱ'),
+        "varsigma" => Some('ς'),
+        "varphi" => Some('ϕ'),
         // Greek uppercase
         "Gamma" => Some('Γ'),
         "Delta" => Some('Δ'),
