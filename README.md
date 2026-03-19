@@ -184,6 +184,31 @@ se tit "Hello"    # set title "Hello"
 se xr [-5:5]      # set xrange [-5:5]
 ```
 
+## LaTeX 数式
+
+タイトル・軸ラベル・凡例で `$...$` を使って数式を記述できます。
+
+```gnuplot
+set title "$E = mc^2$"
+set xlabel "$\omega$ (rad/s)"
+set ylabel "$|\psi|^2$"
+plot sin(x) title "$\sin(x)$"
+```
+
+### サポートされている記法
+
+| 記法 | 例 | 結果 |
+|------|-----|------|
+| 上付き | `$x^2$`, `$x^{10}$` | x² |
+| 下付き | `$x_i$` | xᵢ |
+| 分数 | `$\frac{a}{b}$` | a/b |
+| ギリシャ文字 | `$\alpha$`, `$\Omega$` | α, Ω |
+| アクセント | `$\hat{x}$`, `$\bar{x}$` | x̂, x̄ |
+| 演算子 | `$\sum$`, `$\int$` | Σ, ∫ |
+| ローマン体 | `$\mathrm{Re}$` | Re |
+
+数式は Latin Modern Math フォントで描画されます（SVG に埋め込み済み）。
+
 ## 出力形式
 
 現在は SVG 形式のみ対応しています。ブラウザで直接表示でき、テキストベースなので差分管理も容易です。
