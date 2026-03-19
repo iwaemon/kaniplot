@@ -24,6 +24,14 @@ fn run_kaniplot(input: &str) -> String {
     String::from_utf8_lossy(&output.stdout).to_string()
 }
 
+fn test_data_path(name: &str) -> String {
+    let mut path = std::env::current_dir().unwrap();
+    path.push("tests");
+    path.push("testdata");
+    path.push(name);
+    path.to_string_lossy().to_string()
+}
+
 #[test]
 fn test_plot_sin_x_produces_svg() {
     let stdout = run_kaniplot("set terminal svg\nplot sin(x)\n");
@@ -45,4 +53,47 @@ fn test_script_with_set_commands() {
     assert!(stdout.contains("Sine Wave"), "Title should appear in SVG");
     assert!(stdout.contains(">x<"), "xlabel should appear");
     assert!(stdout.contains(">y<"), "ylabel should appear");
+}
+
+#[test]
+fn test_plot_data_file() {
+    let script = format!(
+        "set terminal svg\nplot \"{}\" with lines\n",
+        test_data_path("simple.dat")
+    );
+    let stdout = run_kaniplot(&script);
+    assert!(stdout.contains("<svg"), "Expected SVG output");
+    assert!(stdout.contains("<polyline"), "Expected polyline for data series");
+}
+
+#[test]
+fn test_plot_data_file_with_using() {
+    let script = format!(
+        "set terminal svg\nplot \"{}\" using 1:2 with points\n",
+        test_data_path("simple.dat")
+    );
+    let stdout = run_kaniplot(&script);
+    assert!(stdout.contains("<svg"), "Expected SVG output");
+    assert!(stdout.contains("<circle"), "Expected circles for points style");
+}
+
+#[test]
+fn test_plot_data_file_multiblock_index() {
+    let script = format!(
+        "set terminal svg\nplot \"{}\" index 1 with lines\n",
+        test_data_path("multiblock.dat")
+    );
+    let stdout = run_kaniplot(&script);
+    assert!(stdout.contains("<svg"), "Expected SVG output");
+    assert!(stdout.contains("<polyline"), "Expected polyline");
+}
+
+#[test]
+fn test_plot_data_file_with_comments_and_missing() {
+    let script = format!(
+        "set terminal svg\nplot \"{}\" with lines\n",
+        test_data_path("comments.dat")
+    );
+    let stdout = run_kaniplot(&script);
+    assert!(stdout.contains("<svg"), "Expected SVG output");
 }
