@@ -135,17 +135,35 @@ pub fn render_svg(model: &PlotModel) -> String {
         match series.style.kind {
             SeriesStyleKind::Lines | SeriesStyleKind::LinesPoints => {
                 if series.points.len() >= 2 {
-                    let mut points_str = String::new();
+                    // Break polyline at discontinuities (large y jumps)
+                    let y_range = model.y_axis.range.1 - model.y_axis.range.0;
+                    let threshold = y_range * 1e4;
+                    let mut segments: Vec<Vec<(f64, f64)>> = vec![vec![]];
+                    let mut prev_y: Option<f64> = None;
                     for (x, y) in &series.points {
-                        let sx = x_to_svg(*x);
-                        let sy = y_to_svg(*y);
-                        write!(points_str, "{sx:.2},{sy:.2} ").unwrap();
+                        if let Some(py) = prev_y {
+                            if (y - py).abs() > threshold {
+                                segments.push(vec![]);
+                            }
+                        }
+                        segments.last_mut().unwrap().push((*x, *y));
+                        prev_y = Some(*y);
                     }
-                    writeln!(svg,
-                        r#"<polyline points="{}" fill="none" stroke="{color}" stroke-width="{}"/>"#,
-                        points_str.trim(),
-                        series.style.line_width
-                    ).unwrap();
+                    for seg in &segments {
+                        if seg.len() >= 2 {
+                            let mut points_str = String::new();
+                            for (x, y) in seg {
+                                let sx = x_to_svg(*x);
+                                let sy = y_to_svg(*y);
+                                write!(points_str, "{sx:.2},{sy:.2} ").unwrap();
+                            }
+                            writeln!(svg,
+                                r#"<polyline points="{}" fill="none" stroke="{color}" stroke-width="{}"/>"#,
+                                points_str.trim(),
+                                series.style.line_width
+                            ).unwrap();
+                        }
+                    }
                 }
                 // Also draw points for LinesPoints
                 if matches!(series.style.kind, SeriesStyleKind::LinesPoints) {
@@ -233,7 +251,8 @@ pub fn render_svg(model: &PlotModel) -> String {
                 let line_x2 = line_x1 + LEGEND_LINE_LEN;
 
                 writeln!(svg,
-                    r#"<line x1="{line_x1}" y1="{row_y}" x2="{line_x2}" y2="{row_y}" stroke="{color}" stroke-width="2"/>"#
+                    r#"<line x1="{line_x1}" y1="{row_y}" x2="{line_x2}" y2="{row_y}" stroke="{color}" stroke-width="{}"/>"#,
+                    series.style.line_width
                 ).unwrap();
 
                 let text_x = line_x2 + LEGEND_PADDING;
@@ -271,7 +290,10 @@ fn format_tick(val: f64) -> String {
     } else if val.fract().abs() < 1e-10 {
         format!("{val:.0}")
     } else {
-        format!("{val:.2}")
+        let s = format!("{val:.6}");
+        let s = s.trim_end_matches('0');
+        let s = s.trim_end_matches('.');
+        s.to_string()
     }
 }
 
