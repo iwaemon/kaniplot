@@ -209,6 +209,21 @@ plot sin(x) title "$\sin(x)$"
 
 数式は Latin Modern Math フォントで描画されます（SVG に埋め込み済み）。
 
+### シェルでの注意
+
+`echo` でパイプする場合、`\alpha` などのバックスラッシュが制御文字として解釈されることがあります。スクリプトファイルか `printf` を使用してください：
+
+```bash
+# NG: echo はバックスラッシュを解釈してしまう
+echo 'set xlabel "$\alpha$"' | kaniplot    # \a が BEL 文字になる
+
+# OK: printf を使う
+printf 'set xlabel "$\\alpha$"\nplot sin(x)\n' | kaniplot
+
+# OK: スクリプトファイルを使う（推奨）
+kaniplot script.gp
+```
+
 ## 出力形式
 
 現在は SVG 形式のみ対応しています。ブラウザで直接表示でき、テキストベースなので差分管理も容易です。
