@@ -22,18 +22,55 @@ const PODO_COLORS: &[(u8, u8, u8)] = &[
 
 /// Build a renderable PlotModel from a PlotCommand and session state.
 pub fn build_plot_model(plot: &PlotCommand, session: &SessionState) -> Result<PlotModel, String> {
-    // Determine x range
+    type PreloadedPoints = Vec<Option<(f64, f64)>>;
+
+    // First pass: pre-load data files to determine x range from data
+    let mut preloaded: Vec<Option<PreloadedPoints>> = Vec::with_capacity(plot.series.len());
+    let mut x_data_min = f64::INFINITY;
+    let mut x_data_max = f64::NEG_INFINITY;
+
+    for s in &plot.series {
+        match s {
+            PlotSeries::Expression { .. } => {
+                preloaded.push(None);
+            }
+            PlotSeries::DataFile { path, using, index, every, .. } => {
+                let content = std::fs::read_to_string(path)
+                    .map_err(|e| format!("Cannot read data file {path:?}: {e}"))?;
+                let blocks = data::parse_data_file(&content)?;
+                let block_idx = index.unwrap_or(0);
+                let block = blocks.get(block_idx)
+                    .ok_or_else(|| format!("Data file {path:?} has no block at index {block_idx}"))?;
+                let points = data::extract_points(block, using.as_ref(), *every)?;
+                for (x, _) in points.iter().flatten() {
+                    if x.is_finite() {
+                        if *x < x_data_min { x_data_min = *x; }
+                        if *x > x_data_max { x_data_max = *x; }
+                    }
+                }
+                preloaded.push(Some(points));
+            }
+        }
+    }
+
+    // Determine final x range
     let (x_min, x_max) = match (&session.xrange.min, &session.xrange.max) {
         (Bound::Value(lo), Bound::Value(hi)) => (*lo, *hi),
-        _ => (-10.0, 10.0), // gnuplot default for expression plots
+        _ => {
+            if x_data_min.is_finite() && x_data_max.is_finite() {
+                (x_data_min, x_data_max)
+            } else {
+                (-10.0, 10.0) // gnuplot default for expression plots
+            }
+        }
     };
 
-    // Evaluate all series
+    // Second pass: build all series
     let mut all_series = Vec::new();
     let mut y_data_min = f64::INFINITY;
     let mut y_data_max = f64::NEG_INFINITY;
 
-    for (idx, s) in plot.series.iter().enumerate() {
+    for (idx, (s, preloaded_data)) in plot.series.iter().zip(preloaded).enumerate() {
         match s {
             PlotSeries::Expression { expr, style } => {
                 let mut points = Vec::with_capacity(session.samples);
@@ -64,8 +101,31 @@ pub fn build_plot_model(plot: &PlotCommand, session: &SessionState) -> Result<Pl
                     label: style.title.clone(),
                 });
             }
-            PlotSeries::DataFile { .. } => {
-                return Err("Data file plots not yet implemented".into());
+            PlotSeries::DataFile { style, .. } => {
+                let raw_points = preloaded_data.expect("DataFile must have preloaded data");
+                let mut points = Vec::with_capacity(raw_points.len());
+                for (x, y) in raw_points.into_iter().flatten() {
+                    if y.is_finite() {
+                        if y < y_data_min { y_data_min = y; }
+                        if y > y_data_max { y_data_max = y; }
+                    }
+                    points.push((x, y));
+                }
+
+                let color = style.line_color.as_ref()
+                    .map(|c| (c.r, c.g, c.b))
+                    .unwrap_or(PODO_COLORS[idx % PODO_COLORS.len()]);
+
+                all_series.push(SeriesData {
+                    points,
+                    style: SeriesStyle {
+                        kind: convert_style_kind(style.kind),
+                        color,
+                        line_width: style.line_width.unwrap_or(1.5),
+                        point_size: style.point_size.unwrap_or(3.0),
+                    },
+                    label: style.title.clone(),
+                });
             }
         }
     }
@@ -219,5 +279,78 @@ mod tests {
         };
         let model = build_plot_model(&plot, &session).unwrap();
         assert_eq!(model.series.len(), 2);
+    }
+
+    #[test]
+    fn test_build_model_data_file() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join("kaniplot_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let data_path = dir.join("test_data.dat");
+        let mut f = std::fs::File::create(&data_path).unwrap();
+        writeln!(f, "1 1\n2 4\n3 9\n4 16\n5 25").unwrap();
+
+        let session = SessionState::new();
+        let plot = PlotCommand {
+            series: vec![PlotSeries::DataFile {
+                path: data_path.to_str().unwrap().to_string(),
+                using: None, index: None, every: None,
+                style: PlotStyle::default(),
+            }],
+        };
+        let model = build_plot_model(&plot, &session).unwrap();
+        assert_eq!(model.series.len(), 1);
+        assert_eq!(model.series[0].points.len(), 5);
+        assert_eq!(model.series[0].points[0], (1.0, 1.0));
+        assert_eq!(model.series[0].points[4], (5.0, 25.0));
+        std::fs::remove_file(&data_path).ok();
+    }
+
+    #[test]
+    fn test_build_model_data_file_with_using() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join("kaniplot_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let data_path = dir.join("test_using.dat");
+        let mut f = std::fs::File::create(&data_path).unwrap();
+        writeln!(f, "1 10 100\n2 20 200\n3 30 300").unwrap();
+
+        let session = SessionState::new();
+        let plot = PlotCommand {
+            series: vec![PlotSeries::DataFile {
+                path: data_path.to_str().unwrap().to_string(),
+                using: Some(UsingSpec { columns: vec![UsingColumn::Index(1), UsingColumn::Index(3)] }),
+                index: None, every: None,
+                style: PlotStyle::default(),
+            }],
+        };
+        let model = build_plot_model(&plot, &session).unwrap();
+        assert_eq!(model.series[0].points[0], (1.0, 100.0));
+        assert_eq!(model.series[0].points[2], (3.0, 300.0));
+        std::fs::remove_file(&data_path).ok();
+    }
+
+    #[test]
+    fn test_build_model_data_file_with_every() {
+        use std::io::Write;
+        let dir = std::env::temp_dir().join("kaniplot_test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let data_path = dir.join("test_every.dat");
+        let mut f = std::fs::File::create(&data_path).unwrap();
+        writeln!(f, "1 1\n2 2\n3 3\n4 4\n5 5\n6 6").unwrap();
+
+        let session = SessionState::new();
+        let plot = PlotCommand {
+            series: vec![PlotSeries::DataFile {
+                path: data_path.to_str().unwrap().to_string(),
+                using: None, index: None, every: Some(2),
+                style: PlotStyle::default(),
+            }],
+        };
+        let model = build_plot_model(&plot, &session).unwrap();
+        assert_eq!(model.series[0].points.len(), 3);
+        assert_eq!(model.series[0].points[0], (1.0, 1.0));
+        assert_eq!(model.series[0].points[1], (3.0, 3.0));
+        std::fs::remove_file(&data_path).ok();
     }
 }
