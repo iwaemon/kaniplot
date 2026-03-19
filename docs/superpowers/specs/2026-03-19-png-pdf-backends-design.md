@@ -34,7 +34,7 @@ resvg::Tree::from_str() → usvg ツリー
 | ファイル | 変更内容 |
 |---------|---------|
 | `src/renderer/mod.rs` | `OutputFormat` enum と `render_to_format()` 関数を追加。`pub mod png; pub mod pdf;` |
-| `src/main.rs` | `render_svg` 直接呼び出しを `render_to_format()` 経由に変更。`TerminalType` → `OutputFormat` のマッピング |
+| `src/main.rs` | `Plot` と `Replot` 両方の `render_svg` 呼び出しを `render_to_format()` 経由に変更。`TerminalType` → `OutputFormat` のマッピング |
 | `Cargo.toml` | `resvg`, `usvg`, `tiny-skia`, `svg2pdf` を依存に追加 |
 
 ## API 設計
@@ -64,9 +64,10 @@ pub fn render_to_format(model: &PlotModel, format: &OutputFormat) -> Result<Vec<
 ```rust
 // src/renderer/png.rs
 pub fn svg_to_png(svg: &str, dpi: u32) -> Result<Vec<u8>, String> {
-    let options = usvg::Options::default();
-    let tree = usvg::Tree::from_str(svg, &options)
-        .map_err(|e| format!("SVG parse error: {e}"))?;
+    if dpi == 0 {
+        return Err("DPI must be greater than 0".to_string());
+    }
+    let tree = super::make_usvg_tree(svg)?;
 
     let scale = dpi as f32 / 96.0;
     let size = tree.size();
@@ -89,12 +90,10 @@ pub fn svg_to_png(svg: &str, dpi: u32) -> Result<Vec<u8>, String> {
 ```rust
 // src/renderer/pdf.rs
 pub fn svg_to_pdf(svg: &str) -> Result<Vec<u8>, String> {
-    let options = usvg::Options::default();
-    let tree = usvg::Tree::from_str(svg, &options)
-        .map_err(|e| format!("SVG parse error: {e}"))?;
+    let tree = super::make_usvg_tree(svg)?;
 
-    let pdf_data = svg2pdf::to_pdf(&tree, svg2pdf::ConversionOptions::default(), svg2pdf::PageOptions::default());
-    Ok(pdf_data)
+    svg2pdf::to_pdf(&tree, svg2pdf::ConversionOptions::default(), svg2pdf::PageOptions::default())
+        .map_err(|e| format!("PDF conversion error: {e}"))
 }
 ```
 
@@ -131,21 +130,29 @@ if let Some(ref path) = session.output {
 | クレート | バージョン | 用途 |
 |---------|----------|------|
 | `resvg` | 0.44 | SVG → ラスタ変換エンジン |
-| `usvg` | 0.44 | SVG パーサー（resvg の入力形式） |
-| `tiny-skia` | 0.11 | 2D ラスタライザ（resvg のバックエンド） |
-| `svg2pdf` | 0.12 | SVG → PDF 変換 |
+| `usvg` | 0.44 | SVG パーサー（resvg の入力形式）。resvg と同バージョンで統一 |
+| `tiny-skia` | 0.11 | 2D ラスタライザ（resvg 0.44 が依存する互換バージョン） |
+| `svg2pdf` | 0.12 | SVG → PDF 変換（usvg 0.44 互換） |
+| `fontdb` | 0.22 | フォントデータベース。`usvg::Options` の `fontdb` フィールドに渡す |
 
 ## フォント対応
 
 `resvg` は SVG 内の `@font-face` による Base64 埋め込みフォントを読み込める。数式レンダリング（Latin Modern Math）は追加作業なしで PNG/PDF に反映される。
 
-`resvg` がフォントを解決できない場合のフォールバックとして、`usvg::Options` の `fontdb` にシステムフォントをロードする：
+`resvg` がフォントを解決できない場合のフォールバックとして、`fontdb` クレートでシステムフォントをロードし `usvg::Options` に渡す。この処理は `png.rs` と `pdf.rs` の両方で共通するため、ヘルパー関数を `renderer/mod.rs` に置く：
 
 ```rust
-let mut options = usvg::Options::default();
-let mut fontdb = usvg::fontdb::Database::new();
-fontdb.load_system_fonts();
+// src/renderer/mod.rs
+fn make_usvg_tree(svg: &str) -> Result<usvg::Tree, String> {
+    let mut fontdb = fontdb::Database::new();
+    fontdb.load_system_fonts();
+    let options = usvg::Options::default();
+    usvg::Tree::from_str(svg, &options, &fontdb)
+        .map_err(|e| format!("SVG parse error: {e}"))
+}
 ```
+
+`png::svg_to_png` と `pdf::svg_to_pdf` はこの `make_usvg_tree()` を呼ぶ。
 
 ## 出力解像度
 
@@ -164,6 +171,7 @@ fontdb.load_system_fonts();
 - **統合テスト:** `set terminal png\nset output "test.png"\nplot sin(x)` で有効な PNG が生成されるか
 - **統合テスト:** `set terminal pdf\nset output "test.pdf"\nplot sin(x)` で有効な PDF が生成されるか
 - **数式テスト:** 数式を含むプロットの PNG/PDF 出力が正常に生成されるか
+- **Replot テスト:** `replot` コマンドでも PNG/PDF が正しく生成されるか
 
 ## スコープ外
 
