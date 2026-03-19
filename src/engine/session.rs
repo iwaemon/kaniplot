@@ -16,6 +16,10 @@ pub struct SessionState {
     pub font: String,
     pub samples: usize,
     pub last_plot: Option<PlotCommand>,
+    pub base_font_size: Option<f64>,
+    pub title_font_size: Option<f64>,
+    pub xlabel_font_size: Option<f64>,
+    pub ylabel_font_size: Option<f64>,
 }
 
 impl Default for SessionState {
@@ -32,7 +36,7 @@ impl SessionState {
             title: None,
             xlabel: None,
             ylabel: None,
-            terminal: TerminalType::Svg,
+            terminal: TerminalType::Svg(None),
             output: None,
             key: KeyOptions::default(),
             xtics: TicsSpec::Auto,
@@ -41,6 +45,10 @@ impl SessionState {
             font: "CMU Serif".into(),
             samples: 1000,
             last_plot: None,
+            base_font_size: None,
+            title_font_size: None,
+            xlabel_font_size: None,
+            ylabel_font_size: None,
         }
     }
 
@@ -48,10 +56,36 @@ impl SessionState {
         match cmd {
             SetCommand::XRange(r)     => self.xrange = r,
             SetCommand::YRange(r)     => self.yrange = r,
-            SetCommand::Title(t)      => self.title = Some(t),
-            SetCommand::XLabel(l)     => self.xlabel = Some(l),
-            SetCommand::YLabel(l)     => self.ylabel = Some(l),
-            SetCommand::Terminal(t)   => self.terminal = t,
+            SetCommand::Title(t, font) => {
+                self.title = Some(t);
+                if let Some(f) = font {
+                    if f.size.is_some() { self.title_font_size = f.size; }
+                }
+            }
+            SetCommand::XLabel(l, font) => {
+                self.xlabel = Some(l);
+                if let Some(f) = font {
+                    if f.size.is_some() { self.xlabel_font_size = f.size; }
+                }
+            }
+            SetCommand::YLabel(l, font) => {
+                self.ylabel = Some(l);
+                if let Some(f) = font {
+                    if f.size.is_some() { self.ylabel_font_size = f.size; }
+                }
+            }
+            SetCommand::Terminal(t) => {
+                // Extract base font size from terminal font spec
+                let font_spec = match &t {
+                    TerminalType::Svg(f) | TerminalType::Pdf(f)
+                    | TerminalType::Png(f) | TerminalType::Eps(f) => f.as_ref(),
+                    TerminalType::Window => None,
+                };
+                if let Some(spec) = font_spec {
+                    if spec.size.is_some() { self.base_font_size = spec.size; }
+                }
+                self.terminal = t;
+            }
             SetCommand::Output(o)     => self.output = Some(o),
             SetCommand::Key(k)        => self.key = k,
             SetCommand::XTics(t)      => self.xtics = t,
@@ -69,7 +103,7 @@ impl SessionState {
             SetProperty::Title    => self.title = None,
             SetProperty::XLabel   => self.xlabel = None,
             SetProperty::YLabel   => self.ylabel = None,
-            SetProperty::Terminal => self.terminal = TerminalType::Svg,
+            SetProperty::Terminal => self.terminal = TerminalType::Svg(None),
             SetProperty::Output   => self.output = None,
             SetProperty::Key      => self.key = KeyOptions { visible: false, ..KeyOptions::default() },
             SetProperty::XTics    => self.xtics = TicsSpec::Auto,
@@ -110,14 +144,14 @@ mod tests {
     #[test]
     fn test_apply_set_title() {
         let mut s = SessionState::new();
-        s.apply_set(SetCommand::Title("Hello".into()));
+        s.apply_set(SetCommand::Title("Hello".into(), None));
         assert_eq!(s.title.as_deref(), Some("Hello"));
     }
 
     #[test]
     fn test_apply_unset() {
         let mut s = SessionState::new();
-        s.apply_set(SetCommand::Title("Hello".into()));
+        s.apply_set(SetCommand::Title("Hello".into(), None));
         s.apply_unset(SetProperty::Title);
         assert!(s.title.is_none());
     }

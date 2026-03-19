@@ -76,6 +76,13 @@ pub struct Color { pub r: u8, pub g: u8, pub b: u8 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DashType { Solid, Dash, Dot, DashDot, DashDotDot }
 
+/// Font specification: optional name and optional size.
+#[derive(Debug, Clone, PartialEq)]
+pub struct FontSpec {
+    pub name: Option<String>,
+    pub size: Option<f64>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SetProperty {
     XRange, YRange, Title, XLabel, YLabel,
@@ -86,7 +93,9 @@ pub enum SetProperty {
 #[derive(Debug, Clone)]
 pub enum SetCommand {
     XRange(Range), YRange(Range),
-    Title(String), XLabel(String), YLabel(String),
+    Title(String, Option<FontSpec>),
+    XLabel(String, Option<FontSpec>),
+    YLabel(String, Option<FontSpec>),
     Terminal(TerminalType), Output(String),
     Key(KeyOptions), XTics(TicsSpec), YTics(TicsSpec),
     Border(u32), Font(String), Samples(usize),
@@ -98,8 +107,14 @@ pub struct Range { pub min: Bound, pub max: Bound }
 #[derive(Debug, Clone, PartialEq)]
 pub enum Bound { Auto, Value(f64) }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum TerminalType { Svg, Pdf, Png, Eps, Window }
+#[derive(Debug, Clone, PartialEq)]
+pub enum TerminalType {
+    Svg(Option<FontSpec>),
+    Pdf(Option<FontSpec>),
+    Png(Option<FontSpec>),
+    Eps(Option<FontSpec>),
+    Window,
+}
 
 #[derive(Debug, Clone)]
 pub struct KeyOptions { pub visible: bool, pub position: KeyPosition }

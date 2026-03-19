@@ -180,6 +180,15 @@ pub fn build_plot_model(plot: &PlotCommand, session: &SessionState) -> Result<Pl
         KeyPosition::BottomRight => KeyPos::BottomRight,
     };
 
+    let base = session.base_font_size.unwrap_or(21.0);
+    let font_sizes = FontSizes {
+        base,
+        title: session.title_font_size.unwrap_or(base),
+        xlabel: session.xlabel_font_size.unwrap_or(base),
+        ylabel: session.ylabel_font_size.unwrap_or(base),
+        legend: base,
+    };
+
     Ok(PlotModel {
         width: 800.0,
         height: 600.0,
@@ -189,6 +198,7 @@ pub fn build_plot_model(plot: &PlotCommand, session: &SessionState) -> Result<Pl
         series: all_series,
         key: KeyConfig { visible: session.key.visible, position: key_pos },
         border: session.border,
+        font_sizes,
     })
 }
 

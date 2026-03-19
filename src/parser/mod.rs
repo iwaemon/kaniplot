@@ -37,13 +37,31 @@ pub fn parse_command(input: &str) -> Result<Option<Command>, String> {
 }
 
 /// Parse multiple lines (script).
+/// Lines ending with `\` are joined with the next line (line continuation).
 pub fn parse_script(input: &str) -> Result<Vec<Command>, String> {
-    let mut commands = Vec::new();
+    // Pre-process: join lines ending with backslash
+    let mut logical_lines: Vec<(usize, String)> = Vec::new();
     for (line_num, line) in input.lines().enumerate() {
+        let trimmed = line.trim_end();
+        if let Some((_line_num, ref mut current)) = logical_lines.last_mut() {
+            let prev_trimmed = current.trim_end();
+            if prev_trimmed.ends_with('\\') {
+                // Remove trailing backslash and append this line
+                current.truncate(current.trim_end().len() - 1);
+                current.push(' ');
+                current.push_str(trimmed);
+                continue;
+            }
+        }
+        logical_lines.push((line_num + 1, trimmed.to_string()));
+    }
+
+    let mut commands = Vec::new();
+    for (line_num, line) in &logical_lines {
         match parse_command(line) {
             Ok(Some(cmd)) => commands.push(cmd),
-            Ok(None) => {} // empty line or comment
-            Err(e) => return Err(format!("Line {}: {e}", line_num + 1)),
+            Ok(None) => {}
+            Err(e) => return Err(format!("Line {line_num}: {e}")),
         }
     }
     Ok(commands)
@@ -99,16 +117,26 @@ impl<'a> Tokenizer<'a> {
             return Err("Expected quoted string".into());
         }
         self.pos += 1; // skip opening quote
-        let start = self.pos;
-        while self.pos < self.input.len() && self.input.as_bytes()[self.pos] != b'"' {
+        let mut s = String::new();
+        while self.pos < self.input.len() {
+            let ch = self.input.as_bytes()[self.pos];
+            if ch == b'"' {
+                self.pos += 1; // skip closing quote
+                return Ok(s);
+            }
+            if ch == b'\\' && self.pos + 1 < self.input.len() {
+                let next = self.input.as_bytes()[self.pos + 1];
+                match next {
+                    b'n' => { s.push('\n'); self.pos += 2; continue; }
+                    b'\\' => { s.push('\\'); self.pos += 2; continue; }
+                    b'"' => { s.push('"'); self.pos += 2; continue; }
+                    _ => {} // not a recognized escape, treat backslash literally
+                }
+            }
+            s.push(ch as char);
             self.pos += 1;
         }
-        if self.pos >= self.input.len() {
-            return Err("Unterminated string".into());
-        }
-        let s = self.input[start..self.pos].to_string();
-        self.pos += 1; // skip closing quote
-        Ok(s)
+        Err("Unterminated string".into())
     }
 
     fn next_number(&mut self) -> Result<f64, String> {
@@ -444,18 +472,31 @@ fn parse_set(tokens: &mut Tokenizer) -> Result<SetCommand, String> {
     match prop_name {
         "xrange" => parse_range(tokens).map(SetCommand::XRange),
         "yrange" => parse_range(tokens).map(SetCommand::YRange),
-        "title"  => tokens.next_quoted_string().map(SetCommand::Title),
-        "xlabel" => tokens.next_quoted_string().map(SetCommand::XLabel),
-        "ylabel" => tokens.next_quoted_string().map(SetCommand::YLabel),
+        "title"  => {
+            let text = tokens.next_quoted_string()?;
+            let font = parse_optional_font(tokens);
+            Ok(SetCommand::Title(text, font))
+        }
+        "xlabel" => {
+            let text = tokens.next_quoted_string()?;
+            let font = parse_optional_font(tokens);
+            Ok(SetCommand::XLabel(text, font))
+        }
+        "ylabel" => {
+            let text = tokens.next_quoted_string()?;
+            let font = parse_optional_font(tokens);
+            Ok(SetCommand::YLabel(text, font))
+        }
         "terminal" => {
             let term_word = tokens.next_word().ok_or("Expected terminal type")?;
             let terms = &["svg", "pdf", "png", "eps", "window"];
             let term = resolve(&term_word, terms)?;
+            let font = parse_optional_font(tokens);
             match term {
-                "svg"    => Ok(SetCommand::Terminal(TerminalType::Svg)),
-                "pdf"    => Ok(SetCommand::Terminal(TerminalType::Pdf)),
-                "png"    => Ok(SetCommand::Terminal(TerminalType::Png)),
-                "eps"    => Ok(SetCommand::Terminal(TerminalType::Eps)),
+                "svg"    => Ok(SetCommand::Terminal(TerminalType::Svg(font))),
+                "pdf"    => Ok(SetCommand::Terminal(TerminalType::Pdf(font))),
+                "png"    => Ok(SetCommand::Terminal(TerminalType::Png(font))),
+                "eps"    => Ok(SetCommand::Terminal(TerminalType::Eps(font))),
                 "window" => Ok(SetCommand::Terminal(TerminalType::Window)),
                 _        => Err(format!("Unknown terminal: {term}")),
             }
@@ -469,6 +510,31 @@ fn parse_set(tokens: &mut Tokenizer) -> Result<SetCommand, String> {
         "samples" => tokens.next_number().map(|n| SetCommand::Samples(n as usize)),
         _         => Err(format!("Unknown set property: {prop_name}")),
     }
+}
+
+/// Parse gnuplot font spec string: "name,size" or ",size" or "name"
+fn parse_font_spec(spec: &str) -> FontSpec {
+    if let Some((name, size_str)) = spec.rsplit_once(',') {
+        let name = if name.is_empty() { None } else { Some(name.to_string()) };
+        let size = size_str.trim().parse::<f64>().ok();
+        FontSpec { name, size }
+    } else {
+        FontSpec { name: Some(spec.to_string()), size: None }
+    }
+}
+
+/// Try to parse an optional `font "spec"` after a set command.
+fn parse_optional_font(tokens: &mut Tokenizer) -> Option<FontSpec> {
+    let save_pos = tokens.pos;
+    if let Some(word) = tokens.next_word() {
+        if word == "font" {
+            if let Ok(spec_str) = tokens.next_quoted_string() {
+                return Some(parse_font_spec(&spec_str));
+            }
+        }
+    }
+    tokens.pos = save_pos;
+    None
 }
 
 fn parse_range(tokens: &mut Tokenizer) -> Result<Range, String> {
@@ -684,7 +750,7 @@ mod tests {
     fn test_parse_set_title() {
         let cmd = parse_command(r#"set title "My Plot""#).unwrap().unwrap();
         match cmd {
-            Command::Set(SetCommand::Title(t)) => assert_eq!(t, "My Plot"),
+            Command::Set(SetCommand::Title(t, _)) => assert_eq!(t, "My Plot"),
             _ => panic!("Expected Set Title"),
         }
     }
@@ -693,7 +759,7 @@ mod tests {
     fn test_parse_set_xlabel() {
         let cmd = parse_command(r#"set xlabel "$x$""#).unwrap().unwrap();
         match cmd {
-            Command::Set(SetCommand::XLabel(l)) => assert_eq!(l, "$x$"),
+            Command::Set(SetCommand::XLabel(l, _)) => assert_eq!(l, "$x$"),
             _ => panic!("Expected Set XLabel"),
         }
     }
@@ -702,7 +768,7 @@ mod tests {
     fn test_parse_set_terminal() {
         let cmd = parse_command("set terminal svg").unwrap().unwrap();
         match cmd {
-            Command::Set(SetCommand::Terminal(t)) => assert_eq!(t, TerminalType::Svg),
+            Command::Set(SetCommand::Terminal(t)) => assert_eq!(t, TerminalType::Svg(None)),
             _ => panic!("Expected Set Terminal"),
         }
     }
@@ -845,5 +911,89 @@ mod tests {
     #[test]
     fn test_empty_line() {
         assert!(parse_command("").unwrap().is_none());
+    }
+
+    #[test]
+    fn test_line_continuation() {
+        let script = "plot sin(x) title \"sin\" with lines, \\\ncos(x) title \"cos\" with lines\n";
+        let cmds = parse_script(script).unwrap();
+        assert_eq!(cmds.len(), 1);
+        match &cmds[0] {
+            Command::Plot(p) => assert_eq!(p.series.len(), 2),
+            _ => panic!("Expected Plot"),
+        }
+    }
+
+    #[test]
+    fn test_line_continuation_multiple() {
+        let script = "plot sin(x) \\\n    title \"sin\" \\\n    with lines\n";
+        let cmds = parse_script(script).unwrap();
+        assert_eq!(cmds.len(), 1);
+    }
+
+    #[test]
+    fn test_quoted_string_escape_newline() {
+        let cmd = parse_command(r#"set title "Line1\nLine2""#).unwrap().unwrap();
+        match cmd {
+            Command::Set(SetCommand::Title(t, _)) => assert_eq!(t, "Line1\nLine2"),
+            _ => panic!("Expected Set Title"),
+        }
+    }
+
+    #[test]
+    fn test_quoted_string_escape_backslash() {
+        let cmd = parse_command(r#"set title "a\\b""#).unwrap().unwrap();
+        match cmd {
+            Command::Set(SetCommand::Title(t, _)) => assert_eq!(t, "a\\b"),
+            _ => panic!("Expected Set Title"),
+        }
+    }
+
+    #[test]
+    fn test_parse_terminal_with_font_size() {
+        let cmd = parse_command(r#"set terminal svg font ",18""#).unwrap().unwrap();
+        match cmd {
+            Command::Set(SetCommand::Terminal(TerminalType::Svg(Some(f)))) => {
+                assert!(f.name.is_none());
+                assert_eq!(f.size, Some(18.0));
+            }
+            _ => panic!("Expected Set Terminal Svg with font spec"),
+        }
+    }
+
+    #[test]
+    fn test_parse_terminal_with_font_name_and_size() {
+        let cmd = parse_command(r#"set terminal svg font "Arial,14""#).unwrap().unwrap();
+        match cmd {
+            Command::Set(SetCommand::Terminal(TerminalType::Svg(Some(f)))) => {
+                assert_eq!(f.name.as_deref(), Some("Arial"));
+                assert_eq!(f.size, Some(14.0));
+            }
+            _ => panic!("Expected Set Terminal Svg with font spec"),
+        }
+    }
+
+    #[test]
+    fn test_parse_title_with_font() {
+        let cmd = parse_command(r#"set title "My Title" font ",24""#).unwrap().unwrap();
+        match cmd {
+            Command::Set(SetCommand::Title(t, Some(f))) => {
+                assert_eq!(t, "My Title");
+                assert_eq!(f.size, Some(24.0));
+            }
+            _ => panic!("Expected Set Title with font spec"),
+        }
+    }
+
+    #[test]
+    fn test_parse_xlabel_with_font() {
+        let cmd = parse_command(r#"set xlabel "X" font ",20""#).unwrap().unwrap();
+        match cmd {
+            Command::Set(SetCommand::XLabel(l, Some(f))) => {
+                assert_eq!(l, "X");
+                assert_eq!(f.size, Some(20.0));
+            }
+            _ => panic!("Expected Set XLabel with font spec"),
+        }
     }
 }

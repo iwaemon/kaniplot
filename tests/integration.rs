@@ -165,6 +165,50 @@ fn test_png_with_math_title() {
 }
 
 #[test]
+fn test_line_continuation() {
+    let script = "set terminal svg\nplot sin(x) title \"sin\" \\\n    with lines\n";
+    let stdout = run_kaniplot(script);
+    assert!(stdout.contains("<svg"), "Expected SVG output");
+    assert!(stdout.contains("sin"), "Title should appear in legend");
+}
+
+#[test]
+fn test_mathrm_in_title() {
+    let script = "set title \"$\\mathrm{Re}(z)$\"\nplot sin(x)\n";
+    let stdout = run_kaniplot(script);
+    assert!(stdout.contains("Re"), "Should contain mathrm text");
+}
+
+#[test]
+fn test_text_in_title() {
+    let script = "set title \"$\\text{Energy} = mc^2$\"\nplot sin(x)\n";
+    let stdout = run_kaniplot(script);
+    assert!(stdout.contains("Energy"), "Should contain text command output");
+}
+
+#[test]
+fn test_font_size_via_terminal() {
+    let script = "set terminal svg font \",30\"\nset title \"Big Title\"\nplot sin(x)\n";
+    let stdout = run_kaniplot(script);
+    assert!(stdout.contains("font-size=\"30\""), "Title should use font size 30");
+}
+
+#[test]
+fn test_title_font_override() {
+    let script = "set terminal svg font \",14\"\nset title \"Custom\" font \",28\"\nplot sin(x)\n";
+    let stdout = run_kaniplot(script);
+    assert!(stdout.contains("font-size=\"28\""), "Title should use overridden font size 28");
+}
+
+#[test]
+fn test_newline_in_title() {
+    let script = "set title \"Line1\\nLine2\"\nplot sin(x)\n";
+    let stdout = run_kaniplot(script);
+    assert!(stdout.contains("Line1"), "Should contain first line");
+    assert!(stdout.contains("Line2"), "Should contain second line");
+}
+
+#[test]
 fn test_replot_png_output() {
     let input = "set terminal png\nset output \"/tmp/kaniplot_replot_test.png\"\nplot sin(x)\nreplot\n";
     let output = run_kaniplot_to_file(input);

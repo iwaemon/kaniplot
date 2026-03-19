@@ -185,6 +185,10 @@ impl<'a> Parser<'a> {
                     .collect();
                 return Ok(MathNode::TextRoman(text));
             }
+            "text" => {
+                let text = self.parse_text_group()?;
+                return Ok(MathNode::TextRoman(text));
+            }
             _ => {}
         }
 
@@ -255,6 +259,35 @@ impl<'a> Parser<'a> {
             (None, Some(p)) => Ok(MathNode::Superscript(base, Box::new(p))),
             (None, None) => unreachable!(),
         }
+    }
+
+    /// Parse a `{...}` group as raw text, preserving spaces.
+    /// Used for `\text{...}` where content is literal text.
+    fn parse_text_group(&mut self) -> Result<String, String> {
+        match self.advance() {
+            Some(b'{') => {}
+            other => {
+                return Err(format!(
+                    "expected '{{' at position {}, got {:?}",
+                    self.pos,
+                    other.map(|b| b as char)
+                ))
+            }
+        }
+        let mut text = String::new();
+        let mut depth = 1;
+        while let Some(b) = self.advance() {
+            match b {
+                b'{' => { depth += 1; text.push('{'); }
+                b'}' => {
+                    depth -= 1;
+                    if depth == 0 { return Ok(text); }
+                    text.push('}');
+                }
+                _ => text.push(b as char),
+            }
+        }
+        Err(format!("unterminated text group at position {}", self.pos))
     }
 
     /// Parse the argument to ^ or _: either a brace group or a single atom.
@@ -440,6 +473,18 @@ mod tests {
             nodes,
             vec![MathNode::Char('a'), MathNode::Char('b')]
         );
+    }
+
+    #[test]
+    fn test_text_command() {
+        let nodes = parse_math(r"\text{Hello}").unwrap();
+        assert_eq!(nodes, vec![MathNode::TextRoman("Hello".to_string())]);
+    }
+
+    #[test]
+    fn test_text_with_spaces() {
+        let nodes = parse_math(r"\text{a b}").unwrap();
+        assert_eq!(nodes, vec![MathNode::TextRoman("a b".to_string())]);
     }
 
     #[test]

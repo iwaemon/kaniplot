@@ -9,9 +9,9 @@ use kaniplot::renderer::{self, OutputFormat};
 
 fn render_output(model: &kaniplot::engine::model::PlotModel, session: &SessionState) {
     let format = match session.terminal {
-        TerminalType::Svg => OutputFormat::Svg,
-        TerminalType::Png => OutputFormat::Png { dpi: 150 },
-        TerminalType::Pdf => OutputFormat::Pdf,
+        TerminalType::Svg(_) => OutputFormat::Svg,
+        TerminalType::Png(_) => OutputFormat::Png { dpi: 150 },
+        TerminalType::Pdf(_) => OutputFormat::Pdf,
         _ => OutputFormat::Svg,
     };
     let output = match renderer::render_to_format(model, &format) {

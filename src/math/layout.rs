@@ -235,7 +235,7 @@ impl LayoutCtx {
                     y: self.y,
                     font_size_ratio: self.size,
                     italic: false,
-                    is_math_font: true,
+                    is_math_font: false,
                 });
                 self.x += width * self.size;
             }

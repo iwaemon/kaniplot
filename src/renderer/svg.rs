@@ -8,9 +8,6 @@ const MARGIN_RIGHT: f64 = 30.0;
 const MARGIN_TOP: f64 = 65.0;
 const MARGIN_BOTTOM: f64 = 80.0;
 const TICK_LEN: f64 = 6.0;
-const FONT_SIZE: f64 = 21.0;
-const TITLE_FONT_SIZE: f64 = 27.0;
-const LEGEND_FONT_SIZE: f64 = 18.0;
 const LEGEND_LINE_LEN: f64 = 25.0;
 const LEGEND_PADDING: f64 = 10.0;
 const LEGEND_ROW_HEIGHT: f64 = 24.0;
@@ -186,9 +183,15 @@ pub fn render_svg(model: &PlotModel) -> String {
     let plot_w = w - MARGIN_LEFT - MARGIN_RIGHT;
     let plot_h = h - MARGIN_TOP - MARGIN_BOTTOM;
 
+    let base_font_size = model.font_sizes.base;
+    let title_font_size = model.font_sizes.title;
+    let xlabel_font_size = model.font_sizes.xlabel;
+    let ylabel_font_size = model.font_sizes.ylabel;
+    let legend_font_size = model.font_sizes.legend;
+
     // SVG header
     write!(svg,
-        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" font-family="serif" font-size="{FONT_SIZE}">"#
+        r#"<svg xmlns="http://www.w3.org/2000/svg" width="{w}" height="{h}" viewBox="0 0 {w} {h}" font-family="serif" font-size="{base_font_size}">"#
     ).unwrap();
     writeln!(svg).unwrap();
 
@@ -211,11 +214,29 @@ pub fn render_svg(model: &PlotModel) -> String {
     // Title
     if let Some(title) = &model.title {
         let tx = w / 2.0;
-        let ty = MARGIN_TOP / 2.0 + TITLE_FONT_SIZE / 3.0;
-        writeln!(svg,
-            r#"<text x="{tx}" y="{ty}" text-anchor="middle" font-size="{TITLE_FONT_SIZE}" font-weight="bold">{}</text>"#,
-            render_math_text(title, TITLE_FONT_SIZE)
-        ).unwrap();
+        let lines: Vec<&str> = title.split('\n').collect();
+        if lines.len() > 1 {
+            let total_height = (lines.len() - 1) as f64 * title_font_size * 1.2;
+            let start_ty = MARGIN_TOP / 2.0 + title_font_size / 3.0 - total_height / 2.0;
+            write!(svg, r#"<text x="{tx}" y="{start_ty}" text-anchor="middle" font-size="{title_font_size}" font-weight="bold">"#).unwrap();
+            for (i, line) in lines.iter().enumerate() {
+                if i == 0 {
+                    write!(svg, "{}", render_math_text(line, title_font_size)).unwrap();
+                } else {
+                    write!(svg, r#"<tspan x="{tx}" dy="{:.1}">{}</tspan>"#,
+                        title_font_size * 1.2,
+                        render_math_text(line, title_font_size)
+                    ).unwrap();
+                }
+            }
+            writeln!(svg, "</text>").unwrap();
+        } else {
+            let ty = MARGIN_TOP / 2.0 + title_font_size / 3.0;
+            writeln!(svg,
+                r#"<text x="{tx}" y="{ty}" text-anchor="middle" font-size="{title_font_size}" font-weight="bold">{}</text>"#,
+                render_math_text(title, title_font_size)
+            ).unwrap();
+        }
     }
 
     // Coordinate transform helpers
@@ -268,8 +289,8 @@ pub fn render_svg(model: &PlotModel) -> String {
         ).unwrap();
         // Label
         writeln!(svg,
-            r#"<text x="{sx}" y="{}" text-anchor="middle" font-size="{FONT_SIZE}">{}</text>"#,
-            sy + FONT_SIZE + 4.0,
+            r#"<text x="{sx}" y="{}" text-anchor="middle" font-size="{base_font_size}">{}</text>"#,
+            sy + base_font_size + 4.0,
             format_tick(tick)
         ).unwrap();
     }
@@ -296,7 +317,7 @@ pub fn render_svg(model: &PlotModel) -> String {
         ).unwrap();
         // Label
         writeln!(svg,
-            r#"<text x="{}" y="{}" text-anchor="end" font-size="{FONT_SIZE}" dominant-baseline="central">{}</text>"#,
+            r#"<text x="{}" y="{}" text-anchor="end" font-size="{base_font_size}" dominant-baseline="central">{}</text>"#,
             sx - 6.0,
             sy,
             format_tick(tick)
@@ -320,8 +341,8 @@ pub fn render_svg(model: &PlotModel) -> String {
         let lx = plot_x + plot_w / 2.0;
         let ly = h - 8.0;
         writeln!(svg,
-            r#"<text x="{lx}" y="{ly}" text-anchor="middle" font-size="{FONT_SIZE}">{}</text>"#,
-            render_math_text(label, FONT_SIZE)
+            r#"<text x="{lx}" y="{ly}" text-anchor="middle" font-size="{xlabel_font_size}">{}</text>"#,
+            render_math_text(label, xlabel_font_size)
         ).unwrap();
     }
 
@@ -330,8 +351,8 @@ pub fn render_svg(model: &PlotModel) -> String {
         let lx = 16.0;
         let ly = plot_y + plot_h / 2.0;
         writeln!(svg,
-            r#"<text x="{lx}" y="{ly}" text-anchor="middle" font-size="{FONT_SIZE}" transform="rotate(-90,{lx},{ly})">{}</text>"#,
-            render_math_text(label, FONT_SIZE)
+            r#"<text x="{lx}" y="{ly}" text-anchor="middle" font-size="{ylabel_font_size}" transform="rotate(-90,{lx},{ly})">{}</text>"#,
+            render_math_text(label, ylabel_font_size)
         ).unwrap();
     }
 
@@ -437,7 +458,7 @@ pub fn render_svg(model: &PlotModel) -> String {
             .collect();
         if !labeled.is_empty() {
             let legend_w = labeled.iter()
-                .map(|s| s.label.as_deref().unwrap_or("").len() as f64 * LEGEND_FONT_SIZE * 0.6 + LEGEND_LINE_LEN + LEGEND_PADDING * 3.0)
+                .map(|s| s.label.as_deref().unwrap_or("").len() as f64 * legend_font_size * 0.6 + LEGEND_LINE_LEN + LEGEND_PADDING * 3.0)
                 .fold(0.0_f64, f64::max);
             let legend_h = labeled.len() as f64 * LEGEND_ROW_HEIGHT + LEGEND_PADDING * 2.0;
 
@@ -465,8 +486,8 @@ pub fn render_svg(model: &PlotModel) -> String {
 
                 let text_x = line_x2 + LEGEND_PADDING;
                 writeln!(svg,
-                    r#"<text x="{text_x}" y="{row_y}" dominant-baseline="central" font-size="{LEGEND_FONT_SIZE}">{}</text>"#,
-                    render_math_text(series.label.as_deref().unwrap_or(""), LEGEND_FONT_SIZE)
+                    r#"<text x="{text_x}" y="{row_y}" dominant-baseline="central" font-size="{legend_font_size}">{}</text>"#,
+                    render_math_text(series.label.as_deref().unwrap_or(""), legend_font_size)
                 ).unwrap();
             }
         }
@@ -544,6 +565,7 @@ mod tests {
             }],
             key: KeyConfig { visible: true, position: KeyPos::TopRight },
             border: 15,
+            font_sizes: FontSizes::default(),
         }
     }
 
@@ -647,5 +669,24 @@ mod tests {
         model.series[0].label = Some("$\\alpha$ curve".into());
         let svg = render_svg(&model);
         assert!(svg.contains("\u{1D6FC}"), "Should contain math italic alpha symbol");
+    }
+
+    #[test]
+    fn test_svg_multiline_title() {
+        let mut model = make_simple_model();
+        model.title = Some("Line1\nLine2".into());
+        let svg = render_svg(&model);
+        assert!(svg.contains("Line1"), "Should contain first line");
+        assert!(svg.contains("Line2"), "Should contain second line");
+    }
+
+    #[test]
+    fn test_svg_custom_font_sizes() {
+        let mut model = make_simple_model();
+        model.font_sizes.title = 30.0;
+        model.font_sizes.base = 16.0;
+        let svg = render_svg(&model);
+        assert!(svg.contains("font-size=\"30\""), "Title should use font size 30");
+        assert!(svg.contains("font-size=\"16\""), "Base should use font size 16");
     }
 }

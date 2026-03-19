@@ -36,6 +36,7 @@ mod tests {
             series: vec![],
             key: KeyConfig { visible: false, position: KeyPos::TopRight },
             border: 15,
+            font_sizes: FontSizes::default(),
         }
     }
 
