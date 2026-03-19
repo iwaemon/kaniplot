@@ -1,0 +1,61 @@
+// src/parser/expr.pest
+
+// Whitespace — silently consumed between tokens
+WHITESPACE = _{ " " | "\t" }
+
+// Entry rule
+expression = { SOI ~ ternary ~ EOI }
+
+// Ternary: expr ? expr : expr (right-associative)
+ternary = { or_expr ~ ("?" ~ ternary ~ ":" ~ ternary)? }
+
+// Logical OR
+or_expr = { and_expr ~ ("||" ~ and_expr)* }
+
+// Logical AND
+and_expr = { comparison ~ ("&&" ~ comparison)* }
+
+// Comparison
+comparison = { additive ~ (comp_op ~ additive)? }
+comp_op = { "==" | "!=" | "<=" | ">=" | "<" | ">" }
+
+// Addition / Subtraction
+additive = { multiplicative ~ ((add_op) ~ multiplicative)* }
+add_op = { "+" | "-" }
+
+// Multiplication / Division / Modulo
+multiplicative = { power ~ ((mul_op) ~ power)* }
+mul_op = { !("**") ~ "*" | "/" | "%" }
+
+// Power (right-associative)
+power = { unary ~ ("**" ~ power)? }
+
+// Unary
+unary = { unary_op? ~ atom }
+unary_op = { "-" | "!" }
+
+// Atom
+atom = {
+    func_call
+    | column_ref
+    | number
+    | variable
+    | "(" ~ ternary ~ ")"
+}
+
+// Function call: sin(x), atan2(y, x)
+func_call = { identifier ~ "(" ~ arg_list ~ ")" }
+arg_list = { ternary ~ ("," ~ ternary)* }
+
+// Column reference: $1, $2
+column_ref = @{ "$" ~ ASCII_DIGIT+ }
+
+// Number: 42, 3.14, 1e-3, .5
+number = @{
+    ASCII_DIGIT+ ~ ("." ~ ASCII_DIGIT*)? ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)?
+    | "." ~ ASCII_DIGIT+ ~ (("e" | "E") ~ ("+" | "-")? ~ ASCII_DIGIT+)?
+}
+
+// Variable / constant name
+variable = @{ identifier }
+identifier = @{ ASCII_ALPHA ~ (ASCII_ALPHANUMERIC | "_")* }
