@@ -97,3 +97,25 @@ fn test_plot_data_file_with_comments_and_missing() {
     let stdout = run_kaniplot(&script);
     assert!(stdout.contains("<svg"), "Expected SVG output");
 }
+
+#[test]
+fn test_math_in_title() {
+    let script = "set title \"$E = mc^2$\"\nplot sin(x)\n";
+    let stdout = run_kaniplot(script);
+    assert!(stdout.contains("Latin Modern Math"), "Should use math font");
+    assert!(stdout.contains("@font-face"), "Should embed font");
+}
+
+#[test]
+fn test_math_in_xlabel() {
+    let script = "set xlabel \"$\\omega$ (rad/s)\"\nplot sin(x)\n";
+    let stdout = run_kaniplot(script);
+    assert!(stdout.contains("ω"), "Should render omega");
+}
+
+#[test]
+fn test_no_math_no_font_embedding() {
+    let script = "set title \"Plain Title\"\nplot sin(x)\n";
+    let stdout = run_kaniplot(script);
+    assert!(!stdout.contains("@font-face"), "Should not embed font");
+}
