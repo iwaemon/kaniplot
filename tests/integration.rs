@@ -143,3 +143,33 @@ fn test_png_output_via_terminal() {
     assert_eq!(&data[0..4], &[0x89, 0x50, 0x4E, 0x47], "Not a valid PNG");
     std::fs::remove_file("/tmp/kaniplot_test_output.png").ok();
 }
+
+#[test]
+fn test_pdf_output_via_terminal() {
+    let input = "set terminal pdf\nset output \"/tmp/kaniplot_test_output.pdf\"\nplot sin(x)\n";
+    let output = run_kaniplot_to_file(input);
+    assert!(output.status.success(), "kaniplot failed: {}", String::from_utf8_lossy(&output.stderr));
+    let data = std::fs::read("/tmp/kaniplot_test_output.pdf").expect("PDF file not created");
+    assert_eq!(&data[0..5], b"%PDF-", "Not a valid PDF");
+    std::fs::remove_file("/tmp/kaniplot_test_output.pdf").ok();
+}
+
+#[test]
+fn test_png_with_math_title() {
+    let input = "set terminal png\nset output \"/tmp/kaniplot_math_test.png\"\nset title \"$E = mc^2$\"\nplot sin(x)\n";
+    let output = run_kaniplot_to_file(input);
+    assert!(output.status.success(), "kaniplot failed: {}", String::from_utf8_lossy(&output.stderr));
+    let data = std::fs::read("/tmp/kaniplot_math_test.png").expect("PNG file not created");
+    assert_eq!(&data[0..4], &[0x89, 0x50, 0x4E, 0x47]);
+    std::fs::remove_file("/tmp/kaniplot_math_test.png").ok();
+}
+
+#[test]
+fn test_replot_png_output() {
+    let input = "set terminal png\nset output \"/tmp/kaniplot_replot_test.png\"\nplot sin(x)\nreplot\n";
+    let output = run_kaniplot_to_file(input);
+    assert!(output.status.success(), "kaniplot failed: {}", String::from_utf8_lossy(&output.stderr));
+    let data = std::fs::read("/tmp/kaniplot_replot_test.png").expect("PNG file not created after replot");
+    assert_eq!(&data[0..4], &[0x89, 0x50, 0x4E, 0x47], "Replot did not produce valid PNG");
+    std::fs::remove_file("/tmp/kaniplot_replot_test.png").ok();
+}
