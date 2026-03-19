@@ -1,12 +1,14 @@
 // src/renderer/mod.rs
 pub mod svg;
 pub mod png;
+pub mod pdf;
 
 use crate::engine::model::PlotModel;
 
 pub enum OutputFormat {
     Svg,
     Png { dpi: u32 },
+    Pdf,
 }
 
 pub fn render_to_format(model: &PlotModel, format: &OutputFormat) -> Result<Vec<u8>, String> {
@@ -14,6 +16,7 @@ pub fn render_to_format(model: &PlotModel, format: &OutputFormat) -> Result<Vec<
     match format {
         OutputFormat::Svg => Ok(svg_string.into_bytes()),
         OutputFormat::Png { dpi } => png::svg_to_png(&svg_string, *dpi),
+        OutputFormat::Pdf => pdf::svg_to_pdf(&svg_string),
     }
 }
 
