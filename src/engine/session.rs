@@ -18,6 +18,12 @@ pub struct SessionState {
     pub last_plot: Option<PlotCommand>,
 }
 
+impl Default for SessionState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl SessionState {
     pub fn new() -> Self {
         Self {

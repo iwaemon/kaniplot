@@ -42,7 +42,7 @@ fn build_ternary(pair: pest::iterators::Pair<Rule>) -> Result<Expr, String> {
 fn build_or_expr(pair: pest::iterators::Pair<Rule>) -> Result<Expr, String> {
     let mut inner = pair.into_inner();
     let mut lhs = build_and_expr(inner.next().unwrap())?;
-    while let Some(rhs_pair) = inner.next() {
+    for rhs_pair in inner {
         let rhs = build_and_expr(rhs_pair)?;
         lhs = Expr::BinaryOp(Box::new(lhs), BinOp::Or, Box::new(rhs));
     }
@@ -52,7 +52,7 @@ fn build_or_expr(pair: pest::iterators::Pair<Rule>) -> Result<Expr, String> {
 fn build_and_expr(pair: pest::iterators::Pair<Rule>) -> Result<Expr, String> {
     let mut inner = pair.into_inner();
     let mut lhs = build_comparison(inner.next().unwrap())?;
-    while let Some(rhs_pair) = inner.next() {
+    for rhs_pair in inner {
         let rhs = build_comparison(rhs_pair)?;
         lhs = Expr::BinaryOp(Box::new(lhs), BinOp::And, Box::new(rhs));
     }
