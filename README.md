@@ -67,6 +67,65 @@ set title "Updated"
 replot
 ```
 
+## データファイルのプロット
+
+空白区切りのカラムデータをプロットできます。
+
+```gnuplot
+plot "data.dat" with lines
+plot "data.dat" using 1:3 with points
+plot "data.dat" using 1:($2*1000) with lines
+plot "data.dat" index 1 with lines
+plot "data.dat" every 2 with lines
+```
+
+### データファイルの形式
+
+- 空白（スペース/タブ）区切りのカラムデータ
+- `#` で始まる行はコメント（スキップ）
+- 空行はデータブロックの区切り
+- `?` は欠損値（描画をスキップ）
+
+```
+# 実験データ
+1  2.3
+2  4.1
+3  5.8
+
+# 別のデータセット
+1  10.0
+2  20.5
+```
+
+### using — カラム選択
+
+```gnuplot
+plot "data.dat" using 1:2          # 1列目をx、2列目をy
+plot "data.dat" using 1:3          # 1列目をx、3列目をy
+plot "data.dat" using 1:($2*100)   # カラム式：$Nで列参照
+```
+
+### index — ブロック選択
+
+空行で区切られたデータブロックを番号（0始まり）で選択します。
+
+```gnuplot
+plot "data.dat" index 0    # 最初のブロック
+plot "data.dat" index 1    # 2番目のブロック
+```
+
+### every — 行の間引き
+
+```gnuplot
+plot "data.dat" every 2    # 2行おきにプロット
+```
+
+### データとモデルの重ね描き
+
+```gnuplot
+plot "data.dat" with points title "Data", x**2 with lines title "Model"
+```
+
 ## プロットスタイル
 
 | スタイル | 説明 |
