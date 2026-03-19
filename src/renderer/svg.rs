@@ -1,4 +1,5 @@
 use crate::engine::model::*;
+use crate::math;
 use std::fmt::Write;
 
 /// Layout constants (in SVG pixels, matching points conceptually)
@@ -13,6 +14,106 @@ const LEGEND_FONT_SIZE: f64 = 12.0;
 const LEGEND_LINE_LEN: f64 = 25.0;
 const LEGEND_PADDING: f64 = 8.0;
 const LEGEND_ROW_HEIGHT: f64 = 18.0;
+
+/// Returns true if the text contains any `$` delimiters (math regions).
+fn model_has_math(model: &PlotModel) -> bool {
+    let has_dollar = |s: &str| s.contains('$');
+
+    if model.title.as_deref().map(has_dollar).unwrap_or(false) {
+        return true;
+    }
+    if model.x_axis.label.as_deref().map(has_dollar).unwrap_or(false) {
+        return true;
+    }
+    if model.y_axis.label.as_deref().map(has_dollar).unwrap_or(false) {
+        return true;
+    }
+    for series in &model.series {
+        if series.label.as_deref().map(has_dollar).unwrap_or(false) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Render a mixed text+math string into SVG `<tspan>` elements.
+///
+/// The text is split on `$`: even-indexed segments are plain text (XML-escaped),
+/// odd-indexed segments are LaTeX math expressions rendered via the math engine.
+fn render_math_text(text: &str, font_size: f64) -> String {
+    let mut out = String::new();
+    // Cumulative dy offset from the natural baseline (in px).
+    let mut cum_dy: f64 = 0.0;
+
+    for (i, segment) in text.split('$').enumerate() {
+        if segment.is_empty() {
+            continue;
+        }
+        if i % 2 == 0 {
+            // Plain text segment — reset dy if needed, then emit text.
+            if cum_dy != 0.0 {
+                // Reset to baseline
+                write!(out, r#"<tspan dy="{:.3}">{}</tspan>"#, -cum_dy, escape_xml(segment)).unwrap();
+                cum_dy = 0.0;
+            } else {
+                write!(out, "<tspan>{}</tspan>", escape_xml(segment)).unwrap();
+            }
+        } else {
+            // Math segment
+            let nodes = match math::parser::parse_math(segment) {
+                Ok(n) => n,
+                Err(_) => {
+                    // Fallback: render as plain text
+                    write!(out, "<tspan>{}</tspan>", escape_xml(segment)).unwrap();
+                    continue;
+                }
+            };
+            let layout = math::layout::layout_math(&nodes);
+
+            // Track the current y-offset (in em) relative to the main baseline.
+            // We must manage dy transitions between glyphs.
+            let mut prev_y_em: f64 = 0.0; // in em units (from math layout baseline = main baseline)
+
+            for glyph in &layout.glyphs {
+                let glyph_y_em = glyph.y; // em relative to math baseline
+                // dy from previous glyph position (in px)
+                let dy_px = (glyph_y_em - prev_y_em) * font_size;
+                cum_dy += dy_px;
+
+                let glyph_font_size = font_size * glyph.font_size_ratio;
+
+                let mut attrs = String::new();
+                if dy_px != 0.0 {
+                    write!(attrs, r#" dy="{:.3}""#, dy_px).unwrap();
+                }
+                if glyph.is_math_font {
+                    write!(attrs, r#" font-family="Latin Modern Math""#).unwrap();
+                }
+                if glyph.italic {
+                    write!(attrs, r#" font-style="italic""#).unwrap();
+                }
+                if (glyph.font_size_ratio - 1.0).abs() > 1e-9 {
+                    write!(attrs, r#" font-size="{:.3}""#, glyph_font_size).unwrap();
+                }
+
+                write!(out, "<tspan{}>{}</tspan>", attrs, escape_xml(&glyph.text)).unwrap();
+                prev_y_em = glyph_y_em;
+            }
+
+            // After the math segment, we need to return to baseline for subsequent text.
+            // We'll do this lazily: track cum_dy and reset when we next output plain text or at end.
+            // If this is the last segment, also reset (so the text element baseline is consistent).
+            // For now, just track cum_dy — reset will happen in the next plain text segment.
+        }
+    }
+
+    // If we ended with dy offset still active, reset it with an empty tspan.
+    if cum_dy != 0.0 {
+        write!(out, r#"<tspan dy="{:.3}"></tspan>"#, -cum_dy).unwrap();
+    }
+
+    out
+}
 
 /// Render a PlotModel to an SVG string.
 pub fn render_svg(model: &PlotModel) -> String {
@@ -34,8 +135,18 @@ pub fn render_svg(model: &PlotModel) -> String {
     // Background
     writeln!(svg, r#"<rect width="{w}" height="{h}" fill="white"/>"#).unwrap();
 
-    // Clip path for plot area
-    writeln!(svg, r#"<defs><clipPath id="plot-area"><rect x="{plot_x}" y="{plot_y}" width="{plot_w}" height="{plot_h}"/></clipPath></defs>"#).unwrap();
+    // Defs section: clip path + optional font embedding
+    if model_has_math(model) {
+        let font_style = crate::fonts::svg_font_face_style();
+        writeln!(svg,
+            r#"<defs><style>{}</style><clipPath id="plot-area"><rect x="{plot_x}" y="{plot_y}" width="{plot_w}" height="{plot_h}"/></clipPath></defs>"#,
+            font_style
+        ).unwrap();
+    } else {
+        writeln!(svg,
+            r#"<defs><clipPath id="plot-area"><rect x="{plot_x}" y="{plot_y}" width="{plot_w}" height="{plot_h}"/></clipPath></defs>"#
+        ).unwrap();
+    }
 
     // Title
     if let Some(title) = &model.title {
@@ -43,7 +154,7 @@ pub fn render_svg(model: &PlotModel) -> String {
         let ty = MARGIN_TOP / 2.0 + TITLE_FONT_SIZE / 3.0;
         writeln!(svg,
             r#"<text x="{tx}" y="{ty}" text-anchor="middle" font-size="{TITLE_FONT_SIZE}" font-weight="bold">{}</text>"#,
-            escape_xml(title)
+            render_math_text(title, TITLE_FONT_SIZE)
         ).unwrap();
     }
 
@@ -113,7 +224,7 @@ pub fn render_svg(model: &PlotModel) -> String {
         let ly = h - 8.0;
         writeln!(svg,
             r#"<text x="{lx}" y="{ly}" text-anchor="middle" font-size="{FONT_SIZE}">{}</text>"#,
-            escape_xml(label)
+            render_math_text(label, FONT_SIZE)
         ).unwrap();
     }
 
@@ -123,7 +234,7 @@ pub fn render_svg(model: &PlotModel) -> String {
         let ly = plot_y + plot_h / 2.0;
         writeln!(svg,
             r#"<text x="{lx}" y="{ly}" text-anchor="middle" font-size="{FONT_SIZE}" transform="rotate(-90,{lx},{ly})">{}</text>"#,
-            escape_xml(label)
+            render_math_text(label, FONT_SIZE)
         ).unwrap();
     }
 
@@ -258,7 +369,7 @@ pub fn render_svg(model: &PlotModel) -> String {
                 let text_x = line_x2 + LEGEND_PADDING;
                 writeln!(svg,
                     r#"<text x="{text_x}" y="{row_y}" dominant-baseline="central" font-size="{LEGEND_FONT_SIZE}">{}</text>"#,
-                    escape_xml(series.label.as_deref().unwrap_or(""))
+                    render_math_text(series.label.as_deref().unwrap_or(""), LEGEND_FONT_SIZE)
                 ).unwrap();
             }
         }
@@ -372,8 +483,8 @@ mod tests {
     fn test_svg_contains_axis_labels() {
         let model = make_simple_model();
         let svg = render_svg(&model);
-        assert!(svg.contains(">x<"));
-        assert!(svg.contains(">y<"));
+        assert!(svg.contains(">x<") || svg.contains(">x</tspan>"));
+        assert!(svg.contains(">y<") || svg.contains(">y</tspan>"));
     }
 
     #[test]
@@ -397,5 +508,47 @@ mod tests {
         model.series[0].style.kind = SeriesStyleKind::Points;
         let svg = render_svg(&model);
         assert!(svg.contains("<circle"));
+    }
+
+    #[test]
+    fn test_svg_math_title() {
+        let mut model = make_simple_model();
+        model.title = Some("$E = mc^2$".into());
+        let svg = render_svg(&model);
+        assert!(svg.contains("Latin Modern Math"), "Should use math font");
+        assert!(svg.contains("@font-face"), "Should embed font");
+    }
+
+    #[test]
+    fn test_svg_mixed_title() {
+        let mut model = make_simple_model();
+        model.title = Some("Energy: $E = mc^2$".into());
+        let svg = render_svg(&model);
+        assert!(svg.contains("Energy:"), "Should contain plain text");
+        assert!(svg.contains("Latin Modern Math"), "Should contain math font");
+    }
+
+    #[test]
+    fn test_svg_no_font_when_no_math() {
+        let model = make_simple_model();
+        let svg = render_svg(&model);
+        assert!(!svg.contains("@font-face"), "Should NOT embed font when no math");
+    }
+
+    #[test]
+    fn test_svg_math_in_xlabel() {
+        let mut model = make_simple_model();
+        model.x_axis.label = Some("$\\omega$ (rad/s)".into());
+        let svg = render_svg(&model);
+        assert!(svg.contains("ω"), "Should contain omega symbol");
+        assert!(svg.contains("@font-face"), "Should embed font");
+    }
+
+    #[test]
+    fn test_svg_math_in_legend() {
+        let mut model = make_simple_model();
+        model.series[0].label = Some("$\\alpha$ curve".into());
+        let svg = render_svg(&model);
+        assert!(svg.contains("α"), "Should contain alpha symbol");
     }
 }
