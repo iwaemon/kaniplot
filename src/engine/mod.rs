@@ -2,6 +2,7 @@ pub mod model;
 pub mod evaluator;
 pub mod autoscale;
 pub mod session;
+pub mod data;
 
 use crate::parser::ast::*;
 use model::*;
