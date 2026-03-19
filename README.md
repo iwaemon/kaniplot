@@ -2,15 +2,29 @@
 
 gnuplot 互換のプロッティングツール（Rust 製）。数式からSVGグラフを生成します。
 
-## インストール
+## 必要なもの
+
+- [Rust](https://www.rust-lang.org/tools/install) 1.70 以上
+
+## コンパイル
 
 ```bash
-git clone https://github.com/ShumpeiSatworker/kaniplot.git
+git clone https://github.com/iwaemon/kaniplot.git
 cd kaniplot
 cargo build --release
 ```
 
 バイナリは `target/release/kaniplot` に生成されます。
+
+## インストール
+
+PATH の通った場所にインストールするには：
+
+```bash
+cargo install --path .
+```
+
+`~/.cargo/bin/kaniplot` にインストールされます。`~/.cargo/bin` が PATH に含まれていることを確認してください。
 
 ## 使い方
 
