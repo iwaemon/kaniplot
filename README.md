@@ -226,7 +226,17 @@ kaniplot script.gp
 
 ## 出力形式
 
-現在は SVG 形式のみ対応しています。ブラウザで直接表示でき、テキストベースなので差分管理も容易です。
+```gnuplot
+set terminal svg     # SVG（デフォルト）
+set terminal png     # PNG（150 DPI）
+set terminal pdf     # PDF（ベクター）
+```
+
+| 形式 | 特徴 |
+|------|------|
+| SVG | デフォルト。ブラウザで直接表示、テキストベースで差分管理も容易 |
+| PNG | ラスタ画像。150 DPI。論文やスライドの貼り込みに |
+| PDF | ベクター画像。印刷品質。LaTeX 文書への埋め込みに |
 
 ## ライセンス
 
