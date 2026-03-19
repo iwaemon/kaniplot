@@ -1,0 +1,8 @@
+[package]
+name = "kaniplot"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pest = "2.8"
+pest_derive = "2.8"
