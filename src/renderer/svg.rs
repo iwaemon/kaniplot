@@ -36,6 +36,58 @@ fn model_has_math(model: &PlotModel) -> bool {
     false
 }
 
+/// Convert a character to its Unicode Mathematical Italic equivalent.
+/// Returns None if no mapping exists (the char should use font-style="italic" instead).
+fn to_math_italic(c: char) -> Option<char> {
+    match c {
+        // Lowercase Latin a-z → Mathematical Italic (U+1D44E–U+1D467)
+        // Exception: 'h' → U+210E (Planck constant / italic h)
+        'a'..='g' => Some(char::from_u32(0x1D44E + (c as u32 - 'a' as u32)).unwrap()),
+        'h' => Some('\u{210E}'),
+        'i'..='z' => Some(char::from_u32(0x1D44E + (c as u32 - 'a' as u32)).unwrap()),
+        // Uppercase Latin A-Z → Mathematical Italic (U+1D434–U+1D44D)
+        'A'..='Z' => Some(char::from_u32(0x1D434 + (c as u32 - 'A' as u32)).unwrap()),
+        // Greek lowercase → Mathematical Italic Greek (U+1D6FC–U+1D714)
+        'α' => Some('\u{1D6FC}'), // alpha
+        'β' => Some('\u{1D6FD}'), // beta
+        'γ' => Some('\u{1D6FE}'), // gamma
+        'δ' => Some('\u{1D6FF}'), // delta
+        'ε' => Some('\u{1D700}'), // epsilon
+        'ζ' => Some('\u{1D701}'), // zeta
+        'η' => Some('\u{1D702}'), // eta
+        'θ' => Some('\u{1D703}'), // theta
+        'ι' => Some('\u{1D704}'), // iota
+        'κ' => Some('\u{1D705}'), // kappa
+        'λ' => Some('\u{1D706}'), // lambda (note: λ U+03BB)
+        'μ' => Some('\u{1D707}'), // mu
+        'ν' => Some('\u{1D708}'), // nu
+        'ξ' => Some('\u{1D709}'), // xi
+        'π' => Some('\u{1D70B}'), // pi
+        'ρ' => Some('\u{1D70C}'), // rho
+        'ς' => Some('\u{1D70D}'), // final sigma
+        'σ' => Some('\u{1D70E}'), // sigma
+        'τ' => Some('\u{1D70F}'), // tau
+        'υ' => Some('\u{1D710}'), // upsilon
+        'φ' => Some('\u{1D711}'), // phi
+        'χ' => Some('\u{1D712}'), // chi
+        'ψ' => Some('\u{1D713}'), // psi
+        'ω' => Some('\u{1D714}'), // omega
+        // Variant Greek
+        'ϑ' => Some('\u{1D717}'), // vartheta
+        'ϕ' => Some('\u{1D719}'), // varphi
+        'ϖ' => Some('\u{1D71B}'), // varpi
+        'ϱ' => Some('\u{1D71A}'), // varrho
+        _ => None,
+    }
+}
+
+/// Convert a string to Mathematical Italic Unicode where possible.
+fn to_math_italic_str(s: &str) -> String {
+    s.chars()
+        .map(|c| to_math_italic(c).unwrap_or(c))
+        .collect()
+}
+
 /// Render a mixed text+math string into SVG `<tspan>` elements.
 ///
 /// The text is split on `$`: even-indexed segments are plain text (XML-escaped),
@@ -89,14 +141,22 @@ fn render_math_text(text: &str, font_size: f64) -> String {
                 if glyph.is_math_font {
                     write!(attrs, r#" font-family="Latin Modern Math""#).unwrap();
                 }
-                if glyph.italic {
-                    write!(attrs, r#" font-style="italic""#).unwrap();
-                }
+                // For math font glyphs, use Unicode Mathematical Italic characters
+                // instead of font-style="italic" (which requires an italic font variant
+                // that Latin Modern Math doesn't have).
+                let display_text = if glyph.italic && glyph.is_math_font {
+                    to_math_italic_str(&glyph.text)
+                } else {
+                    if glyph.italic {
+                        write!(attrs, r#" font-style="italic""#).unwrap();
+                    }
+                    glyph.text.clone()
+                };
                 if (glyph.font_size_ratio - 1.0).abs() > 1e-9 {
                     write!(attrs, r#" font-size="{:.3}""#, glyph_font_size).unwrap();
                 }
 
-                write!(out, "<tspan{}>{}</tspan>", attrs, escape_xml(&glyph.text)).unwrap();
+                write!(out, "<tspan{}>{}</tspan>", attrs, escape_xml(&display_text)).unwrap();
                 prev_y_em = glyph_y_em;
             }
 
@@ -577,7 +637,7 @@ mod tests {
         let mut model = make_simple_model();
         model.x_axis.label = Some("$\\omega$ (rad/s)".into());
         let svg = render_svg(&model);
-        assert!(svg.contains("ω"), "Should contain omega symbol");
+        assert!(svg.contains("\u{1D714}"), "Should contain math italic omega symbol");
         assert!(svg.contains("@font-face"), "Should embed font");
     }
 
@@ -586,6 +646,6 @@ mod tests {
         let mut model = make_simple_model();
         model.series[0].label = Some("$\\alpha$ curve".into());
         let svg = render_svg(&model);
-        assert!(svg.contains("α"), "Should contain alpha symbol");
+        assert!(svg.contains("\u{1D6FC}"), "Should contain math italic alpha symbol");
     }
 }

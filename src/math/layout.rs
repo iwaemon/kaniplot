@@ -119,7 +119,7 @@ impl LayoutCtx {
             MathNode::Operator(c) => {
                 // Add leading space, the operator, then trailing space
                 self.x += OPERATOR_SPACE * self.size;
-                self.push(c.to_string(), OPERATOR_WIDTH, false, false);
+                self.push(c.to_string(), OPERATOR_WIDTH, false, true);
                 self.x += OPERATOR_SPACE * self.size;
             }
             MathNode::Group(nodes) => {
@@ -200,7 +200,7 @@ impl LayoutCtx {
                     y: self.y,
                     font_size_ratio: self.size,
                     italic: false,
-                    is_math_font: false,
+                    is_math_font: true,
                 });
 
                 self.glyphs.extend(num_ctx.glyphs);
@@ -235,7 +235,7 @@ impl LayoutCtx {
                     y: self.y,
                     font_size_ratio: self.size,
                     italic: false,
-                    is_math_font: false,
+                    is_math_font: true,
                 });
                 self.x += width * self.size;
             }

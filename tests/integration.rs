@@ -124,7 +124,7 @@ fn test_math_in_title() {
 fn test_math_in_xlabel() {
     let script = "set xlabel \"$\\omega$ (rad/s)\"\nplot sin(x)\n";
     let stdout = run_kaniplot(script);
-    assert!(stdout.contains("ω"), "Should render omega");
+    assert!(stdout.contains("\u{1D714}"), "Should render math italic omega");
 }
 
 #[test]
