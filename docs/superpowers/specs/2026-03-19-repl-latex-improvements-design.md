@@ -33,7 +33,7 @@ kaniplot> quit
 
 | ファイル | 変更内容 |
 |---------|---------|
-| `Cargo.toml` | `rustyline = "15"` 追加 |
+| `Cargo.toml` | `rustyline = "17"` 追加 |
 | `src/main.rs` | REPL ループ追加。TTY 判定で分岐 |
 
 ### エラーハンドリング
@@ -63,9 +63,9 @@ kaniplot> quit
 `src/math/parser.rs` のコマンドディスパッチで、上記コマンドを認識し `MathNode::TextRoman(String)` として返す。既存の `TextRoman` ノードがそのまま使える（ローマン体・非イタリック）。
 
 ```rust
-// parser.rs のコマンドディスパッチ内
+// parser.rs の parse_command 内
 "sin" | "cos" | "tan" | "log" | "exp" | "ln" | "lim" | "max" | "min" => {
-    nodes.push(MathNode::TextRoman(cmd.to_string()));
+    return Ok(MathNode::TextRoman(cmd.to_string()));
 }
 ```
 
@@ -83,10 +83,17 @@ kaniplot> quit
 
 ### 実装
 
-`src/math/parser.rs` で `|` を `MathNode::Operator('|')` として扱う。
+`src/math/parser.rs` で `|` を `MathNode::Char('|')` として扱う（`Operator` ではなく `Char` を使うことで、前後にスペースが入らない）。`layout.rs` では `Char('|')` は通常のイタリック文字として描画されるが、`|` は立体（italic=false）で描画すべきなので、レイアウト側で `|` を特殊扱いする。
 
 ```rust
-'|' => nodes.push(MathNode::Operator('|')),
+// parser.rs
+'|' => nodes.push(MathNode::Char('|')),
+
+// layout.rs の Char 処理
+MathNode::Char(c) => {
+    let italic = *c != '|'; // | はデリミタなので立体
+    self.push(c.to_string(), CHAR_WIDTH, italic, true);
+}
 ```
 
 ### ファイル変更
@@ -115,16 +122,24 @@ enum MathNode {
 
 ```rust
 // src/math/layout.rs
+const SQRT_WIDTH: f64 = 0.6;
+
 MathNode::Sqrt(children) => {
     // √ 記号を配置
-    self.push("√".to_string(), 0.6, false, true);
+    self.push("√".to_string(), SQRT_WIDTH, false, true);
     // 子ノードをレイアウト（位置を記録）
     let start_x = self.x;
     for child in children {
         self.layout_node(child);
     }
     let end_x = self.x;
-    // オーバーラインの幅を LayoutGlyph のメタデータとして記録
+    let overline_width = end_x - start_x;
+    // √ のグリフに overline 情報を付与
+    // overline = Some((start_x, overline_width))
+    if let Some(sqrt_glyph) = self.glyphs.iter_mut().rev()
+        .find(|g| g.text == "√") {
+        sqrt_glyph.overline = Some((start_x, overline_width));
+    }
 }
 ```
 
@@ -132,18 +147,26 @@ MathNode::Sqrt(children) => {
 
 `\sqrt` のオーバーライン（根号の上の水平線）は `<tspan>` では表現できない。以下の方式で対応：
 
-- `LayoutGlyph` に `overline: Option<f64>` フィールドを追加（オーバーラインの幅、em 単位）
+- `LayoutGlyph` に `overline: Option<(f64, f64)>` フィールドを追加（(開始x, 幅) em 単位）
 - `render_math_text` で `overline` が `Some` のグリフを検出し、`<line>` 要素を数式テキストの後に出力
-- オーバーラインの y 位置は文字の上端（ベースラインから -0.75em）
+- 座標変換: レイアウトの em 単位 → SVG ピクセル: `px = em * font_size`
+- `render_math_text` は呼び出し元から `text_x`（`<text>` 要素の x 座標）と `font_size` を受け取っているため、絶対座標を計算可能
+- `text-anchor="middle"` の場合、テキスト全体幅（`LayoutResult.width * font_size`）の半分を `text_x` から引いた位置が左端
+- オーバーラインの y 位置は `text_y - 0.75 * font_size`
 
 ```xml
-<!-- √x の例 -->
+<!-- √x の例: text_x=400, font_size=18, layout_result.width=1.15em -->
+<!-- テキスト左端 = 400 - (1.15*18)/2 = 389.65 -->
+<!-- √の幅=0.6em, xのoverline開始=0.6em, 幅=0.55em -->
+<!-- line x1 = 389.65 + 0.6*18 = 400.45, x2 = 400.45 + 0.55*18 = 410.35 -->
 <text x="400" y="25" text-anchor="middle" font-size="18">
   <tspan font-family="Latin Modern Math">√</tspan>
   <tspan font-family="Latin Modern Math" font-style="italic">x</tspan>
 </text>
-<line x1="..." y1="..." x2="..." y2="..." stroke="black" stroke-width="0.5"/>
+<line x1="400.45" y1="11.5" x2="410.35" y2="11.5" stroke="black" stroke-width="0.5"/>
 ```
+
+注意: `render_math_text` は現在 `String` を返すが、`\sqrt` のオーバーラインは `<text>` 要素の外に `<line>` を配置する必要がある。`render_math_text` の返り値を構造体に変更し、メインテキスト + 追加 SVG 要素（オーバーライン等）を分けて返す。
 
 ### ファイル変更
 
@@ -177,7 +200,7 @@ MathNode::Sqrt(children) => {
 
 | クレート | バージョン | 用途 |
 |---------|----------|------|
-| `rustyline` | 15 | REPL の行編集・履歴 |
+| `rustyline` | 17 | REPL の行編集・履歴 |
 
 ## スコープ外
 
