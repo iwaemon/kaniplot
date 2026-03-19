@@ -4,7 +4,29 @@ use kaniplot::parser;
 use kaniplot::parser::ast::*;
 use kaniplot::engine;
 use kaniplot::engine::session::SessionState;
-use kaniplot::renderer::svg;
+use kaniplot::parser::ast::TerminalType;
+use kaniplot::renderer::{self, OutputFormat};
+
+fn render_output(model: &kaniplot::engine::model::PlotModel, session: &SessionState) {
+    let format = match session.terminal {
+        TerminalType::Svg => OutputFormat::Svg,
+        TerminalType::Png => OutputFormat::Png { dpi: 150 },
+        _ => OutputFormat::Svg,
+    };
+    let output = match renderer::render_to_format(model, &format) {
+        Ok(data) => data,
+        Err(e) => {
+            eprintln!("Render error: {e}");
+            return;
+        }
+    };
+
+    if let Some(ref path) = session.output {
+        std::fs::write(path, &output).expect("Cannot write output file");
+    } else {
+        io::stdout().write_all(&output).unwrap();
+    }
+}
 
 fn main() {
     let mut input = String::new();
@@ -62,14 +84,7 @@ fn main() {
             Command::Plot(plot_cmd) => {
                 match engine::build_plot_model(&plot_cmd, &session) {
                     Ok(model) => {
-                        let output_svg = svg::render_svg(&model);
-
-                        if let Some(ref path) = session.output {
-                            std::fs::write(path, &output_svg).expect("Cannot write output file");
-                        } else {
-                            io::stdout().write_all(output_svg.as_bytes()).unwrap();
-                        }
-
+                        render_output(&model, &session);
                         session.last_plot = Some(plot_cmd);
                     }
                     Err(e) => {
@@ -81,12 +96,7 @@ fn main() {
                 if let Some(ref plot_cmd) = session.last_plot.clone() {
                     match engine::build_plot_model(plot_cmd, &session) {
                         Ok(model) => {
-                            let output_svg = svg::render_svg(&model);
-                            if let Some(ref path) = session.output {
-                                std::fs::write(path, &output_svg).expect("Cannot write output file");
-                            } else {
-                                io::stdout().write_all(output_svg.as_bytes()).unwrap();
-                            }
+                            render_output(&model, &session);
                         }
                         Err(e) => {
                             eprintln!("Replot error: {e}");
